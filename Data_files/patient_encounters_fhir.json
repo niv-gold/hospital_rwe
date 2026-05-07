@@ -1,0 +1,195 @@
+{
+  "resourceType": "Bundle",
+  "id": "hospital-rwe-encounters",
+  "type": "collection",
+  "entry": [
+
+    {
+      "_issue_log": "ISSUE #1 — Missing required field: birthDate is null",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P001",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1001" }],
+        "name": [{ "family": "Doe", "given": ["John"] }],
+        "gender": "male",
+        "birthDate": null,
+        "telecom": [{ "system": "phone", "value": "919-555-0101" }],
+        "address": [{ "city": "Apex", "state": "NC", "postalCode": "27502" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #2 — Wrong date format: admissionDate uses MM/DD/YYYY instead of YYYY-MM-DD (FHIR standard)",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "E001",
+        "status": "finished",
+        "subject": { "reference": "Patient/P001" },
+        "period": {
+          "start": "01/15/2024",
+          "end": "01/18/2024"
+        },
+        "reasonCode": [{ "coding": [{ "system": "http://snomed.info/sct", "code": "195967001", "display": "Asthma" }] }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #3 — Duplicate patient ID: P002 appears twice with different data",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P002",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1002" }],
+        "name": [{ "family": "Smith", "given": ["Jane"] }],
+        "gender": "female",
+        "birthDate": "1985-11-20",
+        "telecom": [{ "system": "phone", "value": "919-555-0102" }],
+        "address": [{ "city": "Raleigh", "state": "NC", "postalCode": "27601" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #3 — Duplicate patient ID: P002 second occurrence with conflicting birthDate",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P002",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1002" }],
+        "name": [{ "family": "Smith", "given": ["Jane"] }],
+        "gender": "female",
+        "birthDate": "1987-03-15",
+        "telecom": [{ "system": "phone", "value": "919-555-0102" }],
+        "address": [{ "city": "Raleigh", "state": "NC", "postalCode": "27601" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #4 — Invalid gender value: 'M' is not a valid FHIR gender code (must be male/female/other/unknown)",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P003",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1003" }],
+        "name": [{ "family": "Johnson", "given": ["Robert"] }],
+        "gender": "M",
+        "birthDate": "1978-06-30",
+        "telecom": [{ "system": "phone", "value": "919-555-0103" }],
+        "address": [{ "city": "Durham", "state": "NC", "postalCode": "27701" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #5 — Missing encounter status: status field is null (required in FHIR)",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "E003",
+        "status": null,
+        "subject": { "reference": "Patient/P003" },
+        "period": {
+          "start": "2024-02-10",
+          "end": "2024-02-12"
+        },
+        "reasonCode": [{ "coding": [{ "system": "http://snomed.info/sct", "code": "44054006", "display": "Diabetes mellitus type 2" }] }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #6 — Wrong data type: age provided as string instead of integer inside extension",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P004",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1004" }],
+        "name": [{ "family": "Brown", "given": ["Alice"] }],
+        "gender": "female",
+        "birthDate": "1990-09-14",
+        "extension": [{
+          "url": "http://hospital.org/fhir/extension/age",
+          "valueString": "34"
+        }],
+        "telecom": [{ "system": "phone", "value": "919-555-0104" }],
+        "address": [{ "city": "Chapel Hill", "state": "NC", "postalCode": "27514" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #7 — Extra whitespace in patient name fields",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P005",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1005" }],
+        "name": [{ "family": "  Williams  ", "given": ["  Michael  "] }],
+        "gender": "male",
+        "birthDate": "1965-03-22",
+        "telecom": [{ "system": "phone", "value": "919-555-0105" }],
+        "address": [{ "city": "Cary", "state": "NC", "postalCode": "27511" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #8 — Invalid phone number format: contains letters and wrong format",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "E005",
+        "status": "finished",
+        "subject": { "reference": "Patient/P005" },
+        "period": {
+          "start": "2024-03-05",
+          "end": "2024-03-07"
+        },
+        "participant": [{
+          "individual": {
+            "reference": "Practitioner/DR001",
+            "display": "Dr. Sarah Lee"
+          },
+          "telecom": [{ "system": "phone", "value": "CALL-919-ABC-1234" }]
+        }],
+        "reasonCode": [{ "coding": [{ "system": "http://snomed.info/sct", "code": "38341003", "display": "Hypertension" }] }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #9 — Inconsistent coding system: mixes SNOMED and ICD-10 codes without declaring the system correctly",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "E006",
+        "status": "finished",
+        "subject": { "reference": "Patient/P006" },
+        "period": {
+          "start": "2024-04-01",
+          "end": "2024-04-03"
+        },
+        "reasonCode": [
+          { "coding": [{ "system": "http://snomed.info/sct",   "code": "J45.909", "display": "Asthma unspecified" }] },
+          { "coding": [{ "system": "http://hl7.org/fhir/sid/icd-10", "code": "195967001", "display": "Asthma" }] }
+        ]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #10 — Missing patient reference on encounter: subject reference is null, encounter is orphaned",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "P006",
+        "identifier": [{ "system": "http://hospital.org/mrn", "value": "MRN-1006" }],
+        "name": [{ "family": "Garcia", "given": ["Maria"] }],
+        "gender": "female",
+        "birthDate": "2000-12-01",
+        "telecom": [{ "system": "phone", "value": "919-555-0106" }],
+        "address": [{ "city": "Apex", "state": "NC", "postalCode": "27502" }]
+      }
+    },
+
+    {
+      "_issue_log": "ISSUE #10 — Orphaned encounter: subject reference is null, no patient linked",
+      "resource": {
+        "resourceType": "Encounter",
+        "id": "E007",
+        "status": "finished",
+        "subject": null,
+        "period": {
+          "start": "2024-05-10",
+          "end": "2024-05-11"
+        },
+        "reasonCode": [{ "coding": [{ "system": "http://snomed.info/sct", "code": "57676002", "display": "Joint pain" }] }]
+      }
+    }
+
+  ]
+}

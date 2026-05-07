@@ -1,0 +1,14 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# dbt
+target/
+dbt_packages/
+logs/
