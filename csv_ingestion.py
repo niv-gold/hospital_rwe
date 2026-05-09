@@ -1,9 +1,49 @@
 
 #%%
+#=========================================================
+# Import Block
+#=========================================================
 import pandas as pd
+import numpy as np
 import functools
 from functools import reduce
 import logging
+
+#=========================================================
+# Local Variable Block
+#=========================================================
+
+SCHEMA = {
+    'col': 'encounter_id', 'data_type': str,
+    'col': 'patient_id', 'data_type': str,
+    'col': 'patient_name', 'data_type': str,
+    'col': 'birth_date', 'data_type': str,
+    'col': 'gender', 'data_type': str,
+    'col': 'phone', 'data_type': str,
+    'col': 'zip_code', 'data_type': int,
+    'col': 'insurance_type', 'data_type': str,
+    'col': 'smoking_status', 'data_type': str,
+    'col': 'encounter_type', 'data_type': str,
+    'col': 'department', 'data_type': str,
+    'col': 'admit_date', 'data_type': str,
+    'col': 'discharge_date', 'data_type': str,
+    'col': 'length_of_stay_days', 'data_type': int,
+    'col': 'attending_physician_id', 'data_type': str,
+    'col': 'attending_physician_name', 'data_type': str,
+    'col': 'primary_diagnosis_code', 'data_type': str,
+    'col': 'primary_diagnosis_desc', 'data_type': str,
+    'col': 'secondary_diagnosis_code', 'data_type': str,
+    'col': 'secondary_diagnosis_desc', 'data_type': str,
+    'col': 'medication_name', 'data_type': str,
+    'col': 'medication_dosage', 'data_type': str,
+    'col': 'lab_test_name', 'data_type': str,
+    'col': 'lab_result_value', 'data_type': str,
+    'col': 'lab_result_unit', 'data_type': str,
+    'col': 'lab_reference_range', 'data_type': str,
+    'col': 'bmi', 'data_type': str,
+    'col': 'notes', 'data_type': str
+}
+
 
 #=========================================================
 # Functions Block
@@ -17,16 +57,6 @@ def profiling(df:pd.DataFrame, df_name:str)-> None:
     print('== fd nolls ==')
     print (df.isnull().sum())
 
-    print('== fd column stat ==')
-    columns = [col for col in df.columns]
-    for col in columns:
-        print(f'Colomn - {col}')        
-        print(f'Null count: {df[col].isnull().sum()}')
-        print(f'duplicate rows in column: {df[col].duplicated().sum()}')
-        print(f'Data sample: {df[col].unique()[:5]}')
-
-        print('-'*50)
-
 # Transformation - cleansing and data alignment (no busness dependencies)
 def pipe_error_handler(func):
     @functools.wraps(func)
@@ -39,18 +69,15 @@ def pipe_error_handler(func):
     return weraper
 
 
-# @pipe_error_handler
+@pipe_error_handler
 def dead_letter_queue(df:pd.DataFrame, key_columns:list[str])->pd.DataFrame:
     ''' seperate quarntine rows from the rest ingest data'''
 
     conditions = [df[col].isnull() for col in key_columns]
     mask = reduce(lambda x,y: x|y, conditions)
-
     df_valid = df[~mask].copy()
     df_DLQ = df[mask].copy()
-    return df_valid, df_DLQ
-    
-    
+    return df_valid, df_DLQ 
 
 
 @pipe_error_handler
@@ -62,63 +89,81 @@ def df_column_strip(df:pd.DataFrame)-> pd.DataFrame:
         df[col] = df[col].str.strip()
     
     return df
+@pipe_error_handler
+def date_iso_all(df:pd.DataFrame)->pd.DataFrame:
+    lst_col_dt = [col for col in df.columns 
+                            if any(sub in col.lower() for sub in ['date','period'])
+                        ]
+    for col in lst_col_dt:
+        df_iso_col = date_iso(df=df,col=col)
+    return df_iso_col
+    
+@pipe_error_handler
+def date_iso(df:pd.DataFrame, col:str)->pd.DataFrame:
+    'alinging all data format into the universal YYYY-MM-DD'
+    col_dt_iso = f'{col}_iso'
+    df[col_dt_iso] = pd.to_datetime(df[col], errors='coerce', format=None)
+    df_iso = is_date_iso_embigues(df=df, col=col_dt_iso)
+    return df_iso
+    
+@pipe_error_handler
+def is_date_iso_embigues(df:pd.DataFrame, col:str)->pd.DataFrame:
+    df[f'{col}_is_mbg'] = np.where((df[col].dt.day <= 12) & (df[col].dt.month <= 12),1,0)
+    return(df)
+
+@pipe_error_handler
+def schema_enforement(df:pd.DataFrame, schema:dict)->pd.DataFrame:
+
+    cast_column_fix(df=df, col='encounter_id', data_type=str)
 
 
 @pipe_error_handler
-def gender_format_fix(df:pd.DataFrame)-> pd.DataFrame:
-    # TBD: unified all genders under a unified output: M=male, F=Female, O=Other(include Null)
-    lst_gnd = df["gender"].unique()
-    # print(lst_gnd)
-    lst_col_str = df.query("gender in ['1','2']")[['patient_name','gender']]
-
-@pipe_error_handler
-def date_format_fix(df:pd.DataFrame)->pd.DataFrame:
-    # TBD: fix a data column with mix date formats, output a universal format YYYY-MM-DD
-    pass
+def cast_column_fix(df:pd.DataFrame, col:str, data_type:type)->pd.DataFrame:
+    
+    df[col] =  df[col].astype(str).where(df[col].notna(), None)
+    res = df[col].apply(lambda x: isinstance(x,str)).all()
+    print(f'--> Check column "{col}" data valid {data_type}: {res}')
 
 
-@pipe_error_handler
-def phone_format_fix(df:pd.DataFrame)-> pd.DataFrame:
-    # TBD: unifide all phone number into one format [+\n\n\n-\n\n-\n\n\n-\n\n\n\n]
-    pass
-
-def smokin_format_fix(df:pd.DataFrame)-> pd.DataFrame:
-    # TBD: unified smoking status uder a close list of defined values: F=former, N=ever, C=Current, U=Unknown .
-    pass
-
-@pipe_error_handler
-def phi_cols_registry(tbl:str, col:str, classification:str='phi', encrypt:bool=1, method:str='mask')-> None:
-    # TBD: regestry PII/PHI columns to be masked or tokenized befor gold layer 
-    # pd.DataFrame([
-    # {"table": "silver_patients", "column": "ssn", "classification": "PHI", "encryption_required": True}, "method": ["mask" or "tokenize"]])
-    pass
-
-
-# TBD:
-# 1. create serugate keys for columns that holde a list of string: Gender, insurance, smoling
-# 2. check what do we do with missing Key values: Encounter_id, patient_id, (CPT), (ICD-10/9)
-# 3. find out the meaning of Nan on the following fildes: CPT and ICD-10 (dose NaN will rerout to DLQ)
 
 
 #=========================================================
 # Running Block - driving the code
 #=========================================================
 def main()-> None:
+    # ---- Ingestion process -----
     data = pd.read_csv('Data_files/hospital_encounters_raw.csv', skip_blank_lines=True,skiprows=3)
-    # profiling(df=data, df_name='Patient_Encounters')
-    
     key_columns = ['encounter_id','patient_id']
-    df_valid, df_DLQ = dead_letter_queue(df=data, key_columns=key_columns)
-
-    print(df_DLQ.shape)
-    print(df_DLQ.head(100).to_string())
-
-    # df_clean = df_column_strip(df=df_valid)  
-    # profiling(df=df_clean, df_name='Patient_Encounters') 
     
+    # Landing Bronze
+    df_valid, df_DLQ = dead_letter_queue(df=data, key_columns=key_columns)    
+
+    # ---- Clean & Layout & Audit data process -----
+    # -- Schema enforcement ----
+    # 1. Cast all columns to a specific data type.
+    cast_column_fix(df=df_valid, col='encounter_id', data_type=str)
+    print(df_valid.head(5).to_string())
+
+#===================================================================================================
+    # ----- DQ checks -----
+    # 1. ISO date format digest all input styles.
+    # 2. Gender column has 3 values (m,f,o)
+    # 3. Admition date <= release_date 
+#===================================================================================================
+    # df_iso = date_iso_all(df=df_valid)       
+    # cols =  ["encounter_id","patient_id","gender","smoking_status", "admit_date", "admit_date_iso",
+    #          "discharge_date", "discharge_date_iso", "length_of_stay_days", "encounter_type", "zip_code"
+    #          , "phone"]
+    # where = (pd.to_numeric(df_iso["length_of_stay_days"], errors="coerce") > 5)
+    # print(df_iso.loc[where,cols].head(10).to_string()) 
+
+    # cols =  ["encounter_id","patient_id","gender","smoking_status", "admit_date", "admit_date_iso",
+    #          "discharge_date", "discharge_date_iso"]
+    # df_tmp = df_iso.loc[(df_iso["admit_date_iso"]<=df_iso["discharge_date_iso"]),cols]
 
 # -----------------------------------
 if __name__ == "__main__":
     main()
 
 # %%
+data = pd.read_json
