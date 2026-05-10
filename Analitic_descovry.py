@@ -106,7 +106,7 @@ def analitic_expens_diff(df:pd.DataFrame)->None:
             transform(lambda x: x.diff())
     df["pat_enc_daydiff"] = df.groupby(["patient_id"])["period.start"].\
             transform(lambda x: x.diff())
-    # print(df[cols].head(20).to_string()) 
+    print(df[cols].head(20).to_string()) 
 
 @error_handler
 def analitic_ntile(df:pd.DataFrame)->None:
