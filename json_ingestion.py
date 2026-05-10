@@ -4,21 +4,23 @@ import numpy as np
 import json
 from functools import reduce
 from sqlalchemy import create_engine
+import traceback
+import functools
 
-
-
-def profiling(df:pd.DataFrame)->None:
-    print('-'*50,'\n','--> INFO <--')
-    print(df.info())
-    print('-'*50,'\n','--> NULLS stat <--')
-    print(df.isnull().sum())
-    print('-'*50,'\n','--> DF sample <--')
-    print(df.head(20).to_string())
+# Error manager decorator
+def function_error_handler(func):
+    functools.wraps(func)
+    def wraper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            raise Exception(f'--> Function {func.__name__} crashed, error: {e} <--')
+    return wraper
 
 def ingest_json_to_df(df:pd.DataFrame, data_col:str)->pd.DataFrame:
     try:
 
-        with open("Data_files/patient_encounters_fhir_10k.json",'r') as f:
+        with open("Data_files/patient_encounters_fhir_10k_with_patient_id.json",'r') as f:
             bundle = json.load(f)
         encountrers = bundle[data_col]
         json_normelized_df = pd.json_normalize(encountrers)
@@ -78,8 +80,9 @@ def dict_column_normalizing(df:pd.DataFrame, col:str)->pd.DataFrame:
         df_json_normalized = pd.json_normalize(df_col)
         df_json_normalized.index = df_col.index
         df_json_normalized = df_json_normalized.reindex(df.index)
+        df_clean_cols = clean_column_name(df_json_normalized)
 
-        return df_json_normalized.add_prefix(f'{col}.')
+        return df_clean_cols.add_prefix(f'{col}.')
 
     except Exception as e:
         raise Exception(f'--> dict_column_normalizing func FAILED, error msg: {e}')
@@ -255,24 +258,26 @@ def date_iso_all(df:pd.DataFrame)->pd.DataFrame:
     try:
         
         lst_col_dt = [col for col in df.columns 
-                                if any(sub in col.lower() for sub in ['date','period'])
+                                if any(sub in col.lower() for sub in ['resource.birthDate','resource.period.start',
+                                                                      'resource.period.end'])
                             ]
+        
         for col in lst_col_dt:
-            df_iso_col = date_iso(df=df,col=col)
-        return df_iso_col
+            df[col] = date_iso(df=df,col=col)[col]            
+        return df
 
     except Exception as e:
         raise Exception(f'--> FUNC date_iso_all FAILED, error msg: {e}')
 
 def date_iso(df:pd.DataFrame, col:str)->pd.DataFrame:
     'alinging all data format into the universal YYYY-MM-DD'
-    try:
-        
+    try:        
         
         col_dt_iso = f'{col}_iso'
         df[col_dt_iso] = pd.to_datetime(df[col], errors='coerce', format=None)
         df_iso = is_date_iso_embigues(df=df, col=col_dt_iso)
-        return df_iso
+        df_datt_norm = normalize_date(df=df_iso, col=col)
+        return df_datt_norm
 
     except Exception as e:
         raise Exception(f'--> FUNC normalize_dates FAILED, error msg: {e}')
@@ -286,10 +291,60 @@ def is_date_iso_embigues(df:pd.DataFrame, col:str)->pd.DataFrame:
     
     except Exception as e:
         raise Exception(f'--> FUNC is_date_iso_embigues FAILED, error msg: {e}')
+    
+def normalize_date(df:pd.DataFrame, col:str)->pd.DataFrame:
+    DATE_FORMATS = [
+    "%Y-%m-%d",          # 1985-11-20        (FHIR correct)
+    "%m/%d/%Y",          # 11/20/1985
+    "%d/%m/%Y",          # 20/11/1985
+    "%m-%d-%Y",          # 11-20-1985
+    "%d-%m-%Y",          # 20-11-1985
+    "%Y/%m/%d",          # 1985/11/20
+    "%B %d, %Y",         # November 20, 1985 (full month name)
+    "%d %b %Y",          # 20 Nov 1985       (abbreviated month)
+    "%Y%m%d",            # 19851120          (no separators)
+    "%Y-%m-%dT%H:%M:%S", # 1985-11-20T00:00:00
+    "%m/%d/%y",          # 11/20/85          (two-digit year)
+    "%d.%m.%Y",          # 20.11.1985
+    ]
+    
+    df = df.copy()
+    parsed = pd.Series([pd.NaT] * len(df), index=df.index)
 
+    for fmt in DATE_FORMATS:
+        mask = parsed.isna()                          # only retry unparsed rows
+        parsed[mask] = pd.to_datetime(
+            df.loc[mask, col],
+            format=fmt,
+            errors="coerce"                           # failed rows → NaT, try next format
+        )
 
+    # Unix timestamp — numeric string, handle separately
+    still_null = parsed.isna()
+    unix_parsed = pd.to_numeric(df.loc[still_null, col], errors="coerce")
+    parsed[still_null] = pd.to_datetime(unix_parsed, unit="s", errors="coerce")
 
+    df[col] = parsed
+    return df
 
+def clean_column_name(df:pd.DataFrame,word:str)->pd.DataFrame:
+    try:
+        df.columns = df.columns.str.replace('resource.','', regex=False)
+        return df
+
+    except Exception as e:
+        raise Exception(f'--> FUNC clean_column_name FAILD, error msg: {e} <--')
+
+@function_error_handler
+def gender_mapping(df:pd.DataFrame, col:str)-> pd.DataFrame:
+    df_c = df.copy()
+    gen_map = {'female':'f', 'male':'m'}
+    df_c[col] = df_c[col].apply( lambda x: gen_map.get(x,x)) # unfit pass Silently!!!
+    mask = df_c[col].map(gen_map).isna()    
+    return df_c
+
+def Analitic_patient_encounters_2_last_encounters(df:pd.DataFrame)->pd.DataFrame:
+    pass
 #-----------------------------------------------------
 
 def main()->None:
@@ -338,8 +393,8 @@ def main()->None:
     df_enc_valid.to_sql(name='encounter', con=eng_gold, index=False, if_exists="replace")
     df_enc_dlq.to_sql(name='encounter_dlq', con=eng_bronze, index=False, if_exists="replace")
     
-    print('--> VALID ENCOUNTER DF <--\n',df_enc_valid.head(5).to_string())
-    print('--> ENCOUNTER DLQ DF <--\n',df_enc_dlq.head(5).to_string())
+    # print('--> VALID ENCOUNTER DF <--\n',df_enc_valid.head(5).to_string())
+    # print('--> ENCOUNTER DLQ DF <--\n',df_enc_dlq.head(5).to_string())
 
     df_pat_cln = pd.read_sql_table('patient_cln', con=eng_silver)
     key_cols_lst = ['resource.id']
@@ -347,14 +402,27 @@ def main()->None:
     df_pat_valid.to_sql(name='patient', con=eng_gold, index=False, if_exists="replace")
     df_pat_dlq.to_sql(name='patient_dlq', con=eng_bronze, index=False, if_exists="replace")
 
-    print('--> VALID PATIENT DF <--\n',df_pat_valid.head(5).to_string())
-    print('--> PATIENT DLQ DF <--\n',df_pat_dlq.head(5).to_string())
+    # print('--> VALID PATIENT DF <--\n',df_pat_valid.head(5).to_string())
+    # print('--> PATIENT DLQ DF <--\n',df_pat_dlq.head(5).to_string())
+    # 
+
+
+    # print(df_enc_dup.loc[df_enc_dup["resource.id"]=='e0001',["resource.id","resource.period.start","resource.period.end","resource.subject.reference"]].head(20).to_string())
+    # print(df_enc_dup.loc[df_enc_dup.index > 1].head(20).to_string())
+    # print(df_enc_dup.loc[df_enc_dup["resource.id"]>="e0007",["resource.id","resource.period.start",
+    #                                                          "resource.period.end","resource.subject.reference"]].head(20).to_string())
 
     #-- DQ check:
-    # df_iso = date_iso_all(df=df_encounter_cln)
-    # print(df_iso.to_string())
+    cols = ["resource.id","resource.gender"]
+    df_iso = date_iso_all(df=df_encounter_cln)
+    df_gender_fix = gender_mapping(df=df_iso, col="resource.gender")
 
-    
+    # -- Analitical processes:
+    columns = []
+    print(df_gender_fix.head(10).to_string())
+    df_gender_fix.to_sql(name='stg_encounters', con=eng_silver, index=False, if_exists="replace")
+
+
 if __name__=='__main__':
     main()
 

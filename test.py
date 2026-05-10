@@ -29,26 +29,40 @@ flt_dict = { k:v for k,v in dict.items() if v is not None }
 print(flt_dict)
 
 # %%
+import pandas as pd
+import numpy as np
+import functools
 
+def error_handler(func):
+    @functools.wraps(func)
+    def wrap(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            raise Exception(f'--> fuction "{func.__name__}" crashed, error msg: {e}')
+    return wrap
 
+@error_handler
 def extract_columns_from_nested_json(df:pd.DataFrame, col:str)->None:
-    try:
+    # Rule of thumb: Explode --> dropna --> normalize --> preserve Index
+    df_explode = df[col].explode()
+    df_explode_dn = df_explode.dropna()
+    df_norm = pd.json_normalize(df_explode_dn) # index is reset here
+    df_norm.index = df_explode_dn.index # restore the original index the the df for join validity
+    df_extrat = df.merge(df_norm, left_index=True, right_index=True, how="left")
+    df_extrat.drop(columns=[col],inplace=True)
+    x = 1/0
+    return df_extrat
 
-        df_explode = df[col].explode()
-        df_norm = pd.json_normalize(df_explode) # index is reset here
-        df_norm.index = df_explode.index # restore the original index the the df for join validity
-        df_extrat = df.merge(df_norm, left_index=True, right_index=True, how="left")
-        df_extrat.drop(columns=[col],inplace=True)
-        return df_extrat
-    
-    except Exception as e:
-        raise Exception('--> DQ check 1 FAILD!!!')
+
 
 with open ('Data_files/patient_encounters_fhir.json','r') as file:
     bundle = json.load(file)
     df = pd.json_normalize(bundle['entry'])
 
 print(df.shape)
+# TBD: automaite list the columns with data type object that has a json struct inside,
+# dict incapsulate inside arry.
 cols = ['resource.address','resource.identifier','resource.telecom','resource.reasonCode',
         'resource.extension','resource.participant','resource.name','telecom']
 df_tmp = df
@@ -59,7 +73,4 @@ for col in cols:
 
 print(df_tmp.head(10).to_string())
 print(df_tmp.shape)
-
-
-
 # %%
